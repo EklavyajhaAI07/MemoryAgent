@@ -1,0 +1,37 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ─── Environment & Secrets ────────────────────────────────────────────────────
+.env
+*.env.local
+*.env.*.local
+
+# ─── Database (SQLite) ────────────────────────────────────────────────────────
+# The chatbot.db file holds live user data — never commit it to version control.
+backend/chatbot.db
+*.db
+*.sqlite3
+
+# ─── Node / Frontend ──────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+npm-debug.log*
+
+# ─── IDE / OS Clutter ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
+project1_pdf_dump.txt
