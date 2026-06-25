@@ -1,7 +1,7 @@
 # ⚡ MemoryAgent — Stateful AI Chatbot with Memory
 
 <p align="center">
-  <img src="./Logo-Favicon.png" alt="MemoryAgent Logo" width="120"/>
+  <img src="/public/Logo-Favicon.png" alt="MemoryAgent Logo" width="120"/>
 </p>
 
 <p align="center">
@@ -52,7 +52,7 @@ This project is built for **DecodeLabs Industrial Training — Batch 2026** as P
 
 The system is divided into 3 layers — User, Frontend, and Backend — each with distinct responsibilities:
 
-![MemoryAgent System Architecture](./SystemArchitecture.png)
+![MemoryAgent System Architecture](/public/SystemArchitecture.png)
 
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
@@ -74,7 +74,7 @@ Store → Retrieve → Reason → Respond → Store
 
 Every message travels through 7 steps before a response is returned:
 
-![MemoryAgent Data Flow](./Dataflow.png)
+![MemoryAgent Data Flow](/public/Dataflow.png)
 
 1. **User Input** — Raw text message from the browser
 2. **Validation Gate** — Sanitize input, check limits, classify intent, rate-limit
@@ -90,7 +90,7 @@ Every message travels through 7 steps before a response is returned:
 
 ## 🛠 Tech Stack
 
-![Tech Stack Diagram](./Screenshot_2026-06-25_100944.png)
+![Tech Stack Diagram](/public/Screenshot_2026-06-25_100944.png)
 
 | Layer | Choice | Notes |
 |-------|--------|-------|
@@ -106,7 +106,7 @@ Every message travels through 7 steps before a response is returned:
 
 ## 🔁 The Memory Loop (Core Concept)
 
-![Backend Architecture](./Screenshot_2026-06-25_100737.png)
+![Backend Architecture](/public/Screenshot_2026-06-25_100737.png)
 
 This is the most important concept in the entire project. Understand this and everything else follows naturally.
 
