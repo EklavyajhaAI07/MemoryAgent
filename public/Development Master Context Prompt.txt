@@ -1,0 +1,361 @@
+# 🤖 MASTER PROMPT — Project 1: Custom AI Chatbot with Memory
+> DecodeLabs Industrial Training | Batch 2026
+> Paste this into any AI coding agent (Claude Code, Cursor, Copilot, etc.)
+
+---
+
+## ROLE
+
+You are a senior AI Engineer building **Project 1: Custom AI Chatbot with Memory** for an industrial training program at DecodeLabs. Your job is to produce clean, production-aware, well-commented code. Every decision must reflect real engineering standards, not tutorial shortcuts.
+
+---
+
+## PROJECT GOAL
+
+Build a stateful conversational AI chatbot that:
+- Connects to a frontier LLM via official SDK
+- Maintains an **in-memory conversation history array** across turns
+- Appends every user message and model response to that array
+- Sends the **full history as the payload** on every API call
+- Handles edge cases: empty input, token overflow, session reset
+
+The core mechanic is: `Input (Mₜ) + History (Hₜ₋₁) → LLM API → Response (Rₜ) → Append to History`
+
+---
+
+## TECH STACK
+
+| Layer       | Choice                          | Notes                                      |
+|-------------|----------------------------------|---------------------------------------------|
+| Language    | Python 3.10+                    | Primary language                            |
+| Backend     | Flask or FastAPI                | REST API server                             |
+| Frontend    | React (or plain HTML/CSS/JS)    | Chat bubble UI, typing indicator            |
+| LLM SDK     | Anthropic (`anthropic` Python SDK) | Use model: `claude-sonnet-4-6`           |
+| Observability | Hindsight (`HINDSIGHT_API_KEY`) | Log every turn, token usage, latency       |
+| DB (optional) | PostgreSQL (prod) / in-memory (dev) | Persist sessions in production          |
+
+---
+
+## ENVIRONMENT VARIABLES
+
+```env
+ANTHROPIC_API_KEY=your_anthropic_key_here
+HINDSIGHT_API_KEY=your_hindsight_key_here
+```
+
+Load via `python-dotenv`. Never hardcode keys.
+
+---
+
+## CORE ARCHITECTURE
+
+### 1. Conversation History Schema
+```python
+# Each message is a dict with role + content
+# Roles: "user" | "assistant"
+conversation_history: list[dict] = []
+
+# Example state after 2 turns:
+# [
+#   {"role": "user",      "content": "My name is Vipin"},
+#   {"role": "assistant", "content": "Nice to meet you, Vipin!"},
+#   {"role": "user",      "content": "What is my name?"},
+#   {"role": "assistant", "content": "Your name is Vipin."}
+# ]
+```
+
+### 2. The Memory Loop (Core Logic)
+```python
+import anthropic
+import os
+
+client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+SYSTEM_PROMPT = "You are a helpful AI assistant with a friendly tone. Remember everything the user tells you during this session."
+MAX_HISTORY_TURNS = 20  # Sliding window: max message pairs before FIFO pruning
+
+conversation_history = []
+
+def chat(user_input: str) -> str:
+    # STEP 1: Validation Gate — block empty/whitespace input
+    if not user_input or not user_input.strip():
+        return "[Error] Empty input. Please type a message."
+
+    # STEP 2: Append user message to history
+    conversation_history.append({
+        "role": "user",
+        "content": user_input.strip()
+    })
+
+    # STEP 3: Sliding window — prune oldest pairs if over limit
+    # Always remove in pairs (user + assistant) to maintain role alternation
+    while len(conversation_history) > MAX_HISTORY_TURNS * 2:
+        conversation_history.pop(0)  # remove oldest user msg
+        if conversation_history and conversation_history[0]["role"] == "assistant":
+            conversation_history.pop(0)  # remove paired assistant msg
+
+    # STEP 4: Call LLM API with full history as payload
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        system=SYSTEM_PROMPT,
+        messages=conversation_history  # <-- entire history sent every turn
+    )
+
+    # STEP 5: Extract response text
+    reply = response.content[0].text
+
+    # STEP 6: Append model response to history
+    conversation_history.append({
+        "role": "assistant",
+        "content": reply
+    })
+
+    return reply
+
+
+def clear_history():
+    """Reset session — wipe all conversation state."""
+    conversation_history.clear()
+    return "[Session cleared. Starting fresh.]"
+```
+
+### 3. Flask Backend (REST API)
+```python
+# app.py
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from chat import chat, clear_history
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route("/chat", methods=["POST"])
+def handle_chat():
+    data = request.get_json()
+    user_message = data.get("message", "")
+
+    if not user_message.strip():
+        return jsonify({"error": "Empty message"}), 400
+
+    response = chat(user_message)
+    return jsonify({"reply": response})
+
+@app.route("/clear", methods=["POST"])
+def handle_clear():
+    msg = clear_history()
+    return jsonify({"status": msg})
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "history_length": len(conversation_history)})
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
+```
+
+### 4. Frontend Chat UI (React)
+```jsx
+// ChatApp.jsx — minimal working chat UI
+import { useState, useRef, useEffect } from "react";
+
+export default function ChatApp() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("http://localhost:5000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: input }),
+      });
+      const data = await res.json();
+      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "[Error] Failed to reach server." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearChat = async () => {
+    await fetch("http://localhost:5000/clear", { method: "POST" });
+    setMessages([]);
+  };
+
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "1rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
+        <h2>AI Chatbot</h2>
+        <button onClick={clearChat}>Clear Chat</button>
+      </div>
+
+      <div style={{ height: 480, overflowY: "auto", border: "1px solid #ddd", borderRadius: 8, padding: "1rem" }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{ textAlign: m.role === "user" ? "right" : "left", marginBottom: 12 }}>
+            <span style={{
+              display: "inline-block", padding: "8px 14px", borderRadius: 16,
+              background: m.role === "user" ? "#6c63ff" : "#f0f0f0",
+              color: m.role === "user" ? "#fff" : "#333", maxWidth: "75%"
+            }}>
+              {m.content}
+            </span>
+          </div>
+        ))}
+        {loading && <div style={{ color: "#999" }}>AI is typing…</div>}
+        <div ref={bottomRef} />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          placeholder="Type a message…"
+          style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd" }}
+        />
+        <button onClick={sendMessage} disabled={loading}>Send</button>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## HINDSIGHT INTEGRATION (Observability)
+
+Use `HINDSIGHT_API_KEY` to trace every conversation turn. Wrap your LLM call:
+
+```python
+import requests
+import time
+import os
+
+HINDSIGHT_API_KEY = os.environ["HINDSIGHT_API_KEY"]
+
+def log_to_hindsight(user_input, response_text, tokens_used, latency_ms):
+    """Log each turn to Hindsight for observability."""
+    try:
+        requests.post(
+            "https://api.hindsight.dev/v1/log",   # verify actual endpoint in Hindsight docs
+            headers={"Authorization": f"Bearer {HINDSIGHT_API_KEY}"},
+            json={
+                "input": user_input,
+                "output": response_text,
+                "tokens": tokens_used,
+                "latency_ms": latency_ms,
+                "metadata": {
+                    "history_length": len(conversation_history),
+                    "model": "claude-sonnet-4-6"
+                }
+            },
+            timeout=3
+        )
+    except Exception as e:
+        print(f"[Hindsight] Logging failed silently: {e}")
+```
+
+> **Note:** Check Hindsight's official docs for the exact endpoint and payload schema. The above is a standard pattern — adjust field names if needed.
+
+---
+
+## SYSTEM AUDIT: MEMORY EXAM
+
+Run this 3-step test to verify memory works correctly:
+
+```python
+# Test script — run after starting your server
+import requests
+
+BASE = "http://localhost:5000"
+
+# Step 1: State initialization
+r1 = requests.post(f"{BASE}/chat", json={"message": "My name is Vipin"})
+print("Turn 1:", r1.json()["reply"])
+
+# Step 2: Context distraction (forces large token processing)
+r2 = requests.post(f"{BASE}/chat", json={"message": "Write a poem about artificial intelligence and the future of tech"})
+print("Turn 2:", r2.json()["reply"][:100], "...")
+
+# Step 3: State extraction — must recall "Vipin"
+r3 = requests.post(f"{BASE}/chat", json={"message": "What is my name?"})
+print("Turn 3:", r3.json()["reply"])
+assert "Vipin" in r3.json()["reply"], "❌ MEMORY FAILED — name not retained"
+print("✅ Memory test passed")
+```
+
+---
+
+## KNOWN PITFALLS & FIXES
+
+| Pitfall | Cause | Fix |
+|---------|-------|-----|
+| `400 Bad Request` from API | Empty string sent in messages | Validation gate before appending |
+| Context window overflow | History grows unbounded | Sliding window FIFO (prune oldest pairs) |
+| `role` alternation error | Two consecutive same-role messages | Always append user → call API → append assistant |
+| History lost on restart | RAM is ephemeral | Use PostgreSQL/Firestore for production |
+| CORS error in browser | Flask missing CORS headers | Add `flask-cors`, call `CORS(app)` |
+
+---
+
+## FILE STRUCTURE
+
+```
+project1-chatbot/
+├── backend/
+│   ├── app.py              # Flask server + routes
+│   ├── chat.py             # Core memory loop logic
+│   ├── requirements.txt    # anthropic, flask, flask-cors, python-dotenv
+│   └── .env                # ANTHROPIC_API_KEY, HINDSIGHT_API_KEY
+├── frontend/
+│   ├── src/
+│   │   └── ChatApp.jsx     # React chat UI
+│   └── package.json
+└── tests/
+    └── test_memory.py      # 3-step memory audit test
+```
+
+---
+
+## REQUIREMENTS.TXT
+
+```
+anthropic>=0.25.0
+flask>=3.0.0
+flask-cors>=4.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+```
+
+---
+
+## AGENT INSTRUCTIONS
+
+When building this project:
+
+1. **Always validate input** before appending to history — never let an empty string reach the API.
+2. **Never reset history** between messages in the same session — only reset on explicit `/clear` call.
+3. **Always send full history** as the `messages` parameter — do not summarize or truncate silently.
+4. **Prune in pairs** when sliding window kicks in — removing only a user message breaks role alternation.
+5. **Log with Hindsight** on every successful turn — wrap in try/except so logging never crashes the chat.
+6. **Test memory explicitly** using the 3-step audit before calling the project complete.
+7. **Comment every section** of the memory loop — this is a learning project, clarity matters.
+
+---
+
+*DecodeLabs | Batch 2026 | Project 1 Master Prompt*

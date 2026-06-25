@@ -1,5 +1,5 @@
 /**
- * ChatApp.jsx — MemoryAgent: Premium Chat UI with GSAP Animations
+ * ChatApp.jsx — MemoryAgent: Premium Chat UI with GSAP, Themes, & Canvas Cursor Physics
  * Stateful AI Chatbot | DecodeLabs Industrial Training | Batch 2026
  */
 
@@ -25,6 +25,141 @@ const animateSlideIn = (el, fromX = -30) => {
   );
 };
 
+// ── Particle Physics Background Component ─────────────────────────────────────
+function CursorPhysics({ theme }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    let animationId;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    // Particle pool
+    const particles = [];
+    const maxParticles = 60;
+
+    // Track mouse coordinates
+    const mouse = { x: null, y: null, active: false };
+
+    // Select color based on active theme
+    const getParticleColor = () => {
+      if (theme === "light") {
+        return `rgba(99, 102, 241, ${Math.random() * 0.4 + 0.2})`; // Indigo
+      } else if (theme === "navy") {
+        return `rgba(224, 169, 109, ${Math.random() * 0.4 + 0.3})`; // Amber
+      }
+      return `rgba(124, 110, 249, ${Math.random() * 0.4 + 0.2})`; // Purple
+    };
+
+    class Particle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 3 + 1;
+        this.vx = (Math.random() - 0.5) * 1.5;
+        this.vy = (Math.random() - 0.5) * 1.5;
+        this.life = 1.0;
+        this.decay = Math.random() * 0.015 + 0.008;
+        this.color = getParticleColor();
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.color.replace(/[\d.]+\)$/, `${this.life})`);
+        ctx.fill();
+      }
+    }
+
+    const handleResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+
+    const handleMouseMove = (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.active = true;
+
+      // Spawn particles
+      if (particles.length < maxParticles) {
+        for (let i = 0; i < 2; i++) {
+          particles.push(new Particle(mouse.x, mouse.y));
+        }
+      }
+    };
+
+    const handleMouseLeave = () => {
+      mouse.active = false;
+    };
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseleave", handleMouseLeave);
+
+    // Loop
+    const tick = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // Connect particles close to mouse or each other
+      for (let i = 0; i < particles.length; i++) {
+        particles[i].update();
+        particles[i].draw();
+
+        if (particles[i].life <= 0) {
+          particles.splice(i, 1);
+          i--;
+          continue;
+        }
+
+        // Connections
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 80) {
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            // Dynamic transparency lines
+            const alpha = (1 - dist / 80) * 0.15 * Math.min(particles[i].life, particles[j].life);
+            ctx.strokeStyle = theme === "light" 
+              ? `rgba(99, 102, 241, ${alpha})`
+              : theme === "navy"
+                ? `rgba(224, 169, 109, ${alpha})`
+                : `rgba(124, 110, 249, ${alpha})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      animationId = requestAnimationFrame(tick);
+    };
+
+    tick();
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseleave", handleMouseLeave);
+      cancelAnimationFrame(animationId);
+    };
+  }, [theme]);
+
+  return <canvas id="cursor-physics-canvas" ref={canvasRef} />;
+}
+
 export default function ChatApp() {
   // Auth State
   const [token, setToken] = useState(localStorage.getItem("token") || "");
@@ -43,12 +178,22 @@ export default function ChatApp() {
   const [streamingText, setStreamingText] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  // Theme Settings
+  const [theme, setTheme] = useState(localStorage.getItem("app-theme") || "dark");
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const authCardRef = useRef(null);
   const sidebarRef = useRef(null);
   const chatShellRef = useRef(null);
   const messagesAreaRef = useRef(null);
+
+  // Apply Theme to body class
+  useEffect(() => {
+    document.body.className = `theme-${theme}`;
+    localStorage.setItem("app-theme", theme);
+  }, [theme]);
 
   // ── Auto-scroll ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -296,6 +441,7 @@ export default function ChatApp() {
   if (!token) {
     return (
       <main className="auth-container">
+        <CursorPhysics theme={theme} />
         <div className="auth-particle-bg" aria-hidden="true" />
         <div className="auth-card" ref={authCardRef}>
           <div className="brand-logo">
@@ -346,6 +492,8 @@ export default function ChatApp() {
   // ── Render: Main App ─────────────────────────────────────────────────────────
   return (
     <>
+      <CursorPhysics theme={theme} />
+
       <div className="app-bg" aria-hidden="true">
         <div className="bg-orb orb-1" />
         <div className="bg-orb orb-2" />
@@ -410,6 +558,29 @@ export default function ChatApp() {
               </div>
             </div>
             <div className="header-right">
+              {/* Theme Selector Trigger */}
+              <div className="theme-selector-wrap">
+                <button className="btn-theme-trigger" onClick={() => setThemeMenuOpen(!themeMenuOpen)}>
+                  🎨 Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                </button>
+                {themeMenuOpen && (
+                  <div className="theme-dropdown" onMouseLeave={() => setThemeMenuOpen(false)}>
+                    <button className={`theme-option ${theme === "dark" ? "active" : ""}`}
+                      onClick={() => { setTheme("dark"); setThemeMenuOpen(false); }}>
+                      💜 Dark Mode {theme === "dark" && "✓"}
+                    </button>
+                    <button className={`theme-option ${theme === "light" ? "active" : ""}`}
+                      onClick={() => { setTheme("light"); setThemeMenuOpen(false); }}>
+                      ☀️ Light Mode {theme === "light" && "✓"}
+                    </button>
+                    <button className={`theme-option ${theme === "navy" ? "active" : ""}`}
+                      onClick={() => { setTheme("navy"); setThemeMenuOpen(false); }}>
+                      🎖️ Navy Commando {theme === "navy" && "✓"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="status-pill">
                 <span className="status-dot" />
                 Live
