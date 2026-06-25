@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { gsap } from "gsap";
+import { Back, Elastic } from "gsap";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -205,7 +206,7 @@ export default function ChatApp() {
     if (!token && authCardRef.current) {
       gsap.fromTo(authCardRef.current,
         { opacity: 0, y: 40, scale: 0.95 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "back.out(1.7)", delay: 0.1 }
+        { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: Back.out(1.7), delay: 0.1 }
       );
     }
   }, [token]);
@@ -296,7 +297,7 @@ export default function ChatApp() {
         fetchSessions(data.token);
       } else {
         setAuthError(data.error || "Login failed.");
-        gsap.fromTo(authCardRef.current, { x: -8 }, { x: 0, duration: 0.4, ease: "elastic.out(1, 0.3)" });
+        gsap.fromTo(authCardRef.current, { x: -8 }, { x: 0, duration: 0.4, ease: Elastic.out(1, 0.3) });
       }
     } catch {
       setAuthError("Could not reach server.");
